@@ -16,7 +16,7 @@
 <body>
   <div id="root"></div>
 
-  <!-- ★ ここから下はそのまま貼り付け（編集不要） -->
+  <!-- ★ 以下をそのまま貼るだけでOK -->
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
@@ -112,6 +112,16 @@
       {title:"Tips", bullets:["P'はTに重なることあり→拡大で確認","PRは変動し得る"]},
     ];
 
+    /* PAC起源マップ（暗記用 早見表） */
+    const PAC_MAP = [
+      { site: "高位右房/クリスタ〜RAA", inf: "+", iavl: "+", v1: "陽性",           hint:"鋭いP′/頻回PACで多い" },
+      { site: "右房中隔（上）",          inf: "+", iavl: "±", v1: "二相性(+/−)",   hint:"CSより前方" },
+      { site: "CS入口部（下位RA）",       inf: "−", iavl: "±", v1: "二相性(+/−)",   hint:"Long–Short後に出やすい" },
+      { site: "右房自由壁（下）",         inf: "−", iavl: "+", v1: "陽性/平坦",     hint:"I陽性=右側寄り" },
+      { site: "左房後壁/肺静脈",          inf: "−", iavl: "−", v1: "陰性",         hint:"P′幅がやや広い" },
+      { site: "左房中隔/LAA",            inf: "−", iavl: "−", v1: "二相性(−/+)",   hint:"aVL陰性が鍵" },
+    ];
+
     /* SVGギャラリー */
     const WaveSVG = ({ type }) => {
       const grid = () => (
@@ -145,7 +155,7 @@
       { q:"PACの非代償性とは？", a:"洞結節リセット→RRが2×基礎RRより短い" },
     ];
 
-    /* Quiz（PAC含む増量） */
+    /* Quiz（PAC含む増量＋起源推定3問追加＝31問） */
     const QUIZ = [
       { stem:"aVRで初期R。まず疑う？", options:["SVT with aberrancy","VT","AVNRT","洞調律"], answer:1, explain:"aVR初期R/初期40ms上向きはVT支持。" },
       { stem:"Brugada第1段階：全胸部でRSなし。結論は？", options:["SVT支持","VT支持","所見なし","洞徐脈"], answer:1, explain:"R単相/QSのみ→VT。" },
@@ -173,6 +183,16 @@
       { stem:"Capture/Fusionは何を示唆？", options:["SVT","心室起源","房室結節リエントリー","洞頻拍"], answer:1, explain:"VT支持。" },
       { stem:"Vereckei（aVR）Vi/Vt<1。示唆？", options:["SVT支持","VT支持","AVB","洞徐脈"], answer:1, explain:"VT支持。" },
       { stem:"PAC with aberrancy とVTの鑑別で有用？", options:["P'位置と先行RR","QTc","U波","電気軸"], answer:0, explain:"P'とLong–Short。" },
+      /* ▼ PAC起源推定 追加3問 */
+      { stem:"V1陰性・II/III/aVF陰性・I/aVL陰性のP′。最も示唆？",
+        options:["高位右房/RAA","右房中隔（上）","CS入口部/下位右房","左房後壁/肺静脈"], answer:3,
+        explain:"V1陰性 + 下壁陰性 + I/aVL陰性 → 左房後方/肺静脈寄り。" },
+      { stem:"V1二相性(+/−)・II/III/aVF陰性。最も示唆？",
+        options:["右房自由壁（下）","CS入口部（下位右房）","左房中隔/LAA","高位右房"], answer:1,
+        explain:"二相性(+/−)+下壁陰性はCS入口部〜下位RAを示唆。" },
+      { stem:"V1陽性・II/III/aVF陽性・I/aVL陽性。最も示唆？",
+        options:["左房後壁/肺静脈","右房中隔（上）","高位右房/RAA","左房中隔"], answer:2,
+        explain:"V1陽性+下壁陽性+I/aVL陽性 → 高位右房/RAA。" },
     ];
 
     /* ========== Components ========== */
@@ -282,7 +302,37 @@
       <div className="grid gap-6 xl:grid-cols-3 lg:grid-cols-2">
         <div className="space-y-4"><AlgorithmColumn title="VT局在：形態・軸・移行帯" rules={VT_LOCALIZATION} /></div>
         <div className="space-y-4"><AlgorithmColumn title="WPW局在：デルタ波極性" rules={WPW_LOCALIZATION} /></div>
-        <div className="space-y-4"><AlgorithmColumn title="PAC局在：P'軸とV1" rules={PAC_LOCALIZATION} /></div>
+        <div className="space-y-4">
+          <AlgorithmColumn title="PAC局在：P'軸とV1" rules={PAC_LOCALIZATION} />
+          <Card>
+            <h3 className="text-base font-semibold">PAC起源マップ（暗記用 早見表）</h3>
+            <Divider/>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">起源候補</th>
+                    <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">II/III/aVF</th>
+                    <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">I/aVL</th>
+                    <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">V1 P′</th>
+                    <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">ヒント</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {PAC_MAP.map((r,i)=>(
+                    <tr key={i}>
+                      <td className="border border-gray-800 px-2 py-1">{r.site}</td>
+                      <td className="border border-gray-800 px-2 py-1">{r.inf}</td>
+                      <td className="border border-gray-800 px-2 py-1">{r.iavl}</td>
+                      <td className="border border-gray-800 px-2 py-1">{r.v1}</td>
+                      <td className="border border-gray-800 px-2 py-1">{r.hint}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
       </div>
     );
     const Gallery = () => (
