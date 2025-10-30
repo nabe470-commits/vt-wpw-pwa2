@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VT & WPW 学習アプリ（PWA）</title>
+
+  <!-- PWA basics -->
+  <meta name="theme-color" content="#0b0c10" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ECG Study" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+
+  <!-- Tailwind + React (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>body{background:#0b0c10;color:#e5e7eb}</style>
+</head>
+<body>
+  <noscript>このアプリを利用するにはJavaScriptを有効にしてください。</noscript>
+  <div id="root"></div>
+
+  <script>
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(console.error);
+      });
+    }
+  </script>
+
+  <!-- App code (copied from the HTML single-file version) -->
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    const TabButton = ({ active, onClick, children }) => (
+      <button onClick={onClick} className={
+        "px-4 py-2 rounded-full text-sm font-medium transition border " +
+        (active ? "bg-white text-gray-900 border-gray-300 shadow" : "bg-transparent text-gray-200 border-gray-700 hover:bg-gray-800")
+      }>{children}</button>
+    );
+
+    const Card = ({ children, className = "" }) => (
+      <div className={"rounded-2xl border border-gray-800 bg-[#0f1115] p-5 shadow-lg "+className}>{children}</div>
+    );
+
+    const Pill = ({ children }) => (
+      <span className="inline-block rounded-full bg-gray-800/80 px-2.5 py-1 text-xs text-gray-200 border border-gray-700">{children}</span>
+    );
+
+    const CheckItem = ({ text }) => (
+      <li className="flex items-start gap-2 leading-snug">
+        <span className="mt-1 inline-block h-4 w-4 shrink-0 rounded-md border border-gray-700 bg-gray-900/60" />
+        <span>{text}</span>
+      </li>
+    );
+
+    const Divider = () => (<div className="my-6 h-px bg-gradient-to-r from-transparent via-gray-800 to-transparent" />);
+
+    // ----- Knowledge blocks -----
+    const VT_RULES = [
+      { title: "まずは病態評価", bullets: [
+        "不安定（意識障害・ショック・虚脱・胸痛・重度低血圧）→ 直ちに同期下カルディオバージョン",
+        "安定しているがWide QRS頻拍 → まずVTとみなして対応（抗不整脈、専門コンサルト）",
+      ]},
+      { title: "VTを強く示唆する所見（どれか1つでも→VT優位）", bullets: [
+        "AV解離、キャプチャ/フュージョン",
+        "極端な電気軸（右上/北西軸）",
+        "胸部誘導で全誘導同方向（コンコーダンス）",
+        "aVR導出で最初の40msが鋭いR（またはR>40ms）",
+      ]},
+      { title: "Brugada 4段階アルゴリズム（簡略）", bullets: [
+        "① 全胸部誘導でRSが“ない”か？（全てがR単相 or QS）→ あればVT",
+        "② いずれか胸部誘導のRS間隔＞100ms？ → あればVT",
+        "③ AV解離がある？ → あればVT",
+        "④ 形態基準（LBBB様/V1・V2、RBBB様/V6の形）でVTを支持",
+      ]},
+      { title: "Vereckei（aVR）アルゴリズム（簡略）", bullets: [
+        "aVRで最初のR波あり → VT",
+        "aVRで初期40msのベクトルが上向き（R優位） → VT",
+        "aVRの遅延初期活性（Vi/Vt < 1） → VT",
+        "上記で該当なしならSVT with 伝導障害の可能性",
+      ]},
+      { title: "薬物の原則（成人・専門医監督下）", bullets: [
+        "安定した持続性単形性VT：プロカインアミド、ソタロール、アミオダロン等（施設プロトコールに準拠）",
+        "不安定・重篤：同期下カルディオバージョン",
+      ]},
+    ];
+
+    const WPW_RULES = [
+      { title: "WPWの基本", bullets: [
+        "洞調律でPR短縮＋デルタ波（上行脚鈍化）",
+        "副伝導路の存在によりリエントリー（AVRT）を生じうる",
+      ]},
+      { title: "頻拍時の型と初期対応", bullets: [
+        "正行性AVRT（狭QRS）: 迷走神経刺激→アデノシン（禁忌なければ）",
+        "心房細動 + 先行興奮（不規則・Wide）：AV結節遮断薬（ベラパミル/ジルチアゼム/β遮断/ジギタリス）は避ける",
+        "不安定なら同期下カルディオバージョン",
+      ]},
+      { title: "先行興奮AFの薬物", bullets: [
+        "推奨：プロカインアミド、イブチリド（施設プロトコール）",
+        "避ける：AVN遮断単独（ベラパミル、ジルチアゼム、β遮断、ジギタリス）",
+      ]},
+      { title: "カテーテルアブレーション", bullets: [
+        "症候性・高リスク所見で根治目的に考慮",
+        "無症候でも職業などで必要性が高い場合は個別検討",
+      ]},
+      { title: "危険サイン", bullets: [
+        "不規則Wide＋極端な高頻拍 → pre-excited AF",
+        "デルタ波深く明瞭＋短い最短RR → 高リスク疑い",
+      ]},
+    ];
+
+    const VT_MNEMONICS = [
+      { tag: "赤旗", text: "AV解離 / Capture / Fusion → ほぼVT" },
+      { tag: "Brugada", text: "RSなし → RS>100 → AV解離 → 形態" },
+      { tag: "aVR", text: "初期R・上向き初期40ms・Vi/Vt<1 → VT" },
+      { tag: "安全第一", text: "WideQRS頻拍はまずVTとして扱う" },
+    ];
+
+    const WPW_MNEMONICS = [
+      { tag: "禁忌", text: "pre-excited AFにAVN遮断薬は避ける" },
+      { tag: "初期", text: "安定狭QRS AVRT→ 迷走神経刺激→アデノシン" },
+      { tag: "治療", text: "症候性WPWはアブレーション検討" },
+    ];
+
+    const VT_LOCALIZATION = [
+      { title: "LBBB様 vs RBBB様", bullets: [
+        "V1陰性のLBBB様 → 右室起源（RVOTなど）",
+        "V1陽性のRBBB様 → 左室起源（LVOT/僧帽弁輪/左脚領域）",
+      ]},
+      { title: "軸・移行帯", bullets: [
+        "下方軸（II/III/aVF陽性）→ 流出路起源",
+        "上方軸（II/III/aVF陰性）→ 心尖/流入路/後壁",
+        "移行帯V2以前→ 左室寄り、V4以降→ 右室寄り",
+      ]},
+      { title: "RVOT vs LVOT", bullets: [
+        "V2 transition ratio > 0.6 → LVOT疑い",
+        "aVL深いS・aVR高いR → LVOT/左冠尖近傍",
+      ]},
+      { title: "ファシキュラーVT", bullets: [
+        "Verapamil感受性：RBBB様＋上方軸（左後枝起源）",
+        "左前枝起源：RBBB様＋下方軸",
+      ]},
+    ];
+
+    const WPW_LOCALIZATION = [
+      { title: "デルタ波の極性", bullets: [
+        "V1陰性デルタ → 右側（RAS/RPS）",
+        "V1陽性デルタ → 左側（LAS/LPS）",
+        "下壁陰性 → 後中隔寄り（PS）",
+        "I/aVL陽性 + V1陽性 → 左側側壁",
+      ]},
+      { title: "代表的組合せ", bullets: [
+        "左側側壁：I・aVL・V6陽性 + V1陽性",
+        "右側前中隔：V1深い陰性デルタ + I/aVL陰性",
+        "後中隔：下壁陰性デルタ",
+      ]},
+      { title: "Tips", bullets: [
+        "デルタ波は最初の数十msの向き（立ち上がり）で",
+        "正確な局在はEPマッピングで最終決定",
+      ]},
+    ];
+
+    const RuleBlock = ({ title, bullets }) => (
+      <Card>
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-base font-semibold text-white">{title}</h3>
+        </div>
+        <ul className="mt-3 space-y-2 text-sm text-gray-200">
+          {bullets.map((b,i)=>(<CheckItem key={i} text={b}/>))}
+        </ul>
+      </Card>
+    );
+
+    const AlgorithmColumn = ({ title, rules, mnemonics }) => (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">{title}</h2>
+          <div className="flex gap-2">{mnemonics?.slice(0,3).map((m,i)=>(<Pill key={i}>{m.tag}</Pill>))}</div>
+        </div>
+        {rules.map((r,i)=>(<RuleBlock key={i} title={r.title} bullets={r.bullets}/>))}
+        <Card>
+          <h3 className="text-base font-semibold">ミニマム一文ルール</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-200">
+            {mnemonics?.map((m,i)=>(<li key={i}><span className="mr-2 font-semibold text-white">[{m.tag}]</span>{m.text}</li>))}
+          </ul>
+        </Card>
+      </div>
+    );
+
+    // SVG waves
+    const WaveSVG = ({ type }) => {
+      const grid = () => (
+        <pattern id="g" width="20" height="20" patternUnits="userSpaceOnUse">
+          <path d={`M20 0H0 M0 20V0`} stroke="#1f2937" strokeWidth="1" />
+        </pattern>
+      );
+      const path = {
+        vt_mono: "M10,80 L60,80 L80,60 L100,110 L120,70 L140,90 L160,80 L180,80 L200,60 L220,110 L240,70 L260,90 L280,80",
+        delta_pos: "M10,100 L40,100 Q55,95 70,120 T100,100 L140,100",
+        af_irregular: "M10,80 q10,-10 20,0 t20,0 t20,0 t20,0 M80,80 L100,40 L120,110 L140,50 L160,120 L180,60 L200,110",
+        capture_fusion: "M10,80 L60,80 L80,60 L100,110 L120,70 L140,90 L160,60 L170,80 L190,60 L210,110 L230,70 L250,90",
+      };
+      return (
+        <svg viewBox="0 0 300 160" className="w-full rounded-xl border border-gray-800 bg-gray-900">
+          <defs>{grid()}</defs>
+          <rect width="100%" height="100%" fill="url(#g)" />
+          <path d={path[type] || path.vt_mono} stroke="#60a5fa" style={{strokeWidth:2, fill:"none"}} />
+        </svg>
+      );
+    };
+
+    const MnemonicRow = ({ list }) => (
+      <div className="grid gap-2 sm:grid-cols-2">
+        {list.map((m,i)=>(
+          <div key={i} className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900/40 px-3 py-2">
+            <span className="text-xs text-gray-300"><b className="mr-2 inline-block rounded bg-gray-800 px-2 py-0.5 text-[10px] border border-gray-700">{m.tag}</b>{m.text}</span>
+          </div>
+        ))}
+      </div>
+    );
+
+    const Flashcards = () => {
+      const FLASHCARDS = [
+        { q: "Brugadaの最初のステップは？", a: "全胸部誘導でRSがないかを確認" },
+        { q: "aVRでVTを強く示唆する所見は？", a: "aVRの初期R、または初期40ms上向き" },
+        { q: "pre-excited AFで避ける薬群は？", a: "AVN遮断（ベラパミル/ジルチアゼム/β遮断/ジギタリス）" },
+        { q: "症候性WPWの根治は？", a: "カテーテルアブレーション" },
+      ];
+      const [idx,setIdx] = useState(0);
+      const [show,setShow] = useState(false);
+      const next = ()=>{ setShow(false); setIdx((i)=>(i+1)%FLASHCARDS.length); };
+      const prev = ()=>{ setShow(false); setIdx((i)=>(i-1+FLASHCARDS.length)%FLASHCARDS.length); };
+      const card = FLASHCARDS[idx];
+      return (
+        <Card>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold">フラッシュカード</h3>
+            <div className="flex gap-2">
+              <button onClick={prev} className="rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">←</button>
+              <button onClick={next} className="rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">→</button>
+            </div>
+          </div>
+          <Divider />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+              <div className="text-xs text-gray-400">Question</div>
+              <div className="mt-2 text-lg font-semibold text-white">{card.q}</div>
+            </div>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+              <div className="text-xs text-gray-400">Answer</div>
+              <button onClick={()=>setShow(s=>!s)} className="mt-2 rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">{show?"隠す":"表示"}</button>
+              {show && <div className="mt-3 text-base text-emerald-300">{card.a}</div>}
+            </div>
+          </div>
+        </Card>
+      );
+    };
+
+    const QUIZ = [
+      { stem: "aVRで初期40ms上向き。まず疑う？", options:["SVT with aberrancy","VT","AVNRT","洞調律"], answer:1, explain:"aVR初期R/上向きはVT支持" },
+      { stem: "不規則Wideで超速。避ける薬？", options:["アミオダロン","プロカインアミド","ベラパミル","同期下CV"], answer:2, explain:"pre-excited AFはAVN遮断薬を避ける" },
+      { stem: "RS間隔>100ms。示唆は？", options:["SVT濃厚","VT支持","所見なし","洞徐脈"], answer:1, explain:"Brugada第2ステップでVT支持" },
+      { stem: "安定正行性AVRTの初手？", options:["同期下CV","迷走神経刺激","ベラパミル即投与","除細動"], answer:1, explain:"安定狭QRSは迷走→アデノシン" },
+      { stem: "V1陰性LBBB様＋下方軸。起源？", options:["RVOT","LVOT","左後枝","心房"], answer:0, explain:"流出路→RVOT典型" },
+    ];
+
+    const Quiz = ({ onWrongChange }) => {
+      const [answers,setAnswers] = useState(Array(QUIZ.length).fill(null));
+      const [revealed,setRevealed] = useState(false);
+      const score = useMemo(()=>answers.reduce((a,v,i)=>a+(v===QUIZ[i].answer?1:0),0),[answers]);
+      useEffect(()=>{
+        if(revealed){
+          const wrong = QUIZ.map((q,i)=>answers[i]===q.answer?null:i).filter(x=>x!==null);
+          try{ localStorage.setItem('vtwpw_wrong', JSON.stringify(wrong)); }catch(e){}
+          onWrongChange && onWrongChange(wrong);
+        }
+      },[revealed]);
+      return (
+        <Card>
+          <div className="flex items-center justify-between"><h3 className="text-base font-semibold">クイズ（{QUIZ.length}問）</h3><div className="text-sm text-gray-300">{revealed?`得点: ${score}/${QUIZ.length}`:<span className="text-gray-500">回答を選択</span>}</div></div>
+          <Divider />
+          <div className="space-y-6">
+            {QUIZ.map((q,qi)=> (
+              <div key={qi} className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+                <div className="text-sm font-semibold text-white">{qi+1}. {q.stem}</div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {q.options.map((opt,oi)=>{
+                    const picked = answers[qi]===oi;
+                    const correct = revealed && oi===q.answer;
+                    const wrong = revealed && picked && oi!==q.answer;
+                    return (
+                      <button key={oi} onClick={()=>{ if(!revealed){ setAnswers(prev=>prev.map((v,idx)=>idx===qi?oi:v)); } }}
+                        className={"flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition "+(correct?"border-emerald-500/60 bg-emerald-500/10": wrong?"border-rose-500/60 bg-rose-500/10": picked?"border-blue-500/60 bg-blue-500/10":"border-gray-800 bg-gray-900/40 hover:bg-gray-800/40")}
+                      >
+                        <span>{opt}</span>
+                        {correct && <span className="text-emerald-400">◎</span>}
+                        {wrong && <span className="text-rose-400">×</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {revealed && <div className="mt-2 text-xs text-gray-300">解説：{q.explain}</div>}
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button onClick={()=>{ try{localStorage.removeItem('vtwpw_wrong');}catch(e){}; setAnswers(Array(QUIZ.length).fill(null)); setRevealed(false); }} className="rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">リセット</button>
+            <button onClick={()=>setRevealed(true)} className="rounded-lg border border-gray-500 bg-white/5 px-3 py-1 text-sm hover:bg-white/10">採点する</button>
+          </div>
+        </Card>
+      );
+    };
+
+    const Review = () => {
+      const [wrong,setWrong] = useState([]);
+      useEffect(()=>{ try{ const raw = localStorage.getItem('vtwpw_wrong'); if(raw) setWrong(JSON.parse(raw)); }catch(e){} },[]);
+      const [answers,setAnswers] = useState([]);
+      const [revealed,setRevealed] = useState(false);
+      const items = wrong.map(i=>QUIZ[i]).filter(Boolean);
+      const score = useMemo(()=>answers.reduce((a,v,i)=>a+(v===items[i]?.answer?1:0),0),[answers,items]);
+      return (
+        <Card>
+          <div className="flex items-center justify-between"><h3 className="text-base font-semibold">誤答復習（{items.length}問）</h3>{revealed && <div className="text-sm text-gray-300">{`得点: ${score}/${items.length}`}</div>}</div>
+          <Divider />
+          {items.length===0? (<div className="text-sm text-gray-400">誤答はまだ記録されていません。クイズ採点後に自動記録されます。</div>) : (
+            <div className="space-y-6">
+              {items.map((q,qi)=> (
+                <div key={qi} className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+                  <div className="text-sm font-semibold text-white">{qi+1}. {q.stem}</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {q.options.map((opt,oi)=>{
+                      const picked = answers[qi]===oi;
+                      const correct = revealed && oi===q.answer;
+                      const wrongpick = revealed && picked && oi!==q.answer;
+                      return (
+                        <button key={oi} onClick={()=>{ if(!revealed){ const arr=[...answers]; arr[qi]=oi; setAnswers(arr);} }}
+                          className={"flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition "+(correct?"border-emerald-500/60 bg-emerald-500/10": wrongpick?"border-rose-500/60 bg-rose-500/10": picked?"border-blue-500/60 bg-blue-500/10":"border-gray-800 bg-gray-900/40 hover:bg-gray-800/40")}
+                        >
+                          <span>{opt}</span>
+                          {correct && <span className="text-emerald-400">◎</span>}
+                          {wrongpick && <span className="text-rose-400">×</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {revealed && <div className="mt-2 text-xs text-gray-300">解説：{q.explain}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <button onClick={()=>{ try{localStorage.removeItem('vtwpw_wrong');}catch(e){}; setWrong([]); setAnswers([]); setRevealed(false); }} className="rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">クリア</button>
+            <button onClick={()=>setRevealed(true)} className="rounded-lg border border-gray-500 bg-white/5 px-3 py-1 text-sm hover:bg-white/10">採点する</button>
+          </div>
+        </Card>
+      );
+    };
+
+    const Notes = () => {
+      const [text,setText] = useState("");
+      useEffect(()=>{ try{ const saved=localStorage.getItem('vtwpw_notes'); if(saved) setText(saved);}catch(e){} },[]);
+      const save = ()=>{ try{ localStorage.setItem('vtwpw_notes', text);}catch(e){} };
+      return (
+        <Card>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold">自分用ノート</h3>
+            <button onClick={save} className="rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">保存</button>
+          </div>
+          <textarea className="mt-3 w-full min-h-48 rounded-xl border border-gray-800 bg-gray-900/50 p-3 text-sm text-gray-100 outline-none" placeholder="講義メモ、症例の気づき、覚え書きなど…" value={text} onChange={(e)=>setText(e.target.value)} />
+        </Card>
+      );
+    };
+
+    const Localize = () => (
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4"><AlgorithmColumn title="VT局在：形態・軸・移行帯で推定" rules={VT_LOCALIZATION} mnemonics={VT_MNEMONICS} /></div>
+        <div className="space-y-4">
+          <AlgorithmColumn title="WPW副伝導路局在：デルタ波極性で推定" rules={WPW_LOCALIZATION} mnemonics={WPW_MNEMONICS} />
+          <Card>
+            <h3 className="text-base font-semibold">覚え方ショートカット</h3>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-200">
+              <li>V1陰性デルタ→右側、V1陽性→左側</li>
+              <li>下壁陰性→後中隔寄り、I/aVL陽性＋V1陽性→左側側壁</li>
+            </ul>
+          </Card>
+        </div>
+      </div>
+    );
+
+    const Gallery = () => (
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card><h3 className="text-base font-semibold">単形性VT（概念図）</h3><div className="mt-3"><WaveSVG type="vt_mono"/></div><p className="mt-2 text-xs text-gray-300">規則正しいWide QRS。形態固定。実臨床では誘導ごとの形に注目。</p></Card>
+        <Card><h3 className="text-base font-semibold">デルタ波陽性（概念図）</h3><div className="mt-3"><WaveSVG type="delta_pos"/></div><p className="mt-2 text-xs text-gray-300">PR短縮＋緩やかな立ち上がり。極性で経路推定。</p></Card>
+        <Card><h3 className="text-base font-semibold">pre-excited AF（概念図）</h3><div className="mt-3"><WaveSVG type="af_irregular"/></div><p className="mt-2 text-xs text-gray-300">不規則・Wide・非常に速い。AVN遮断薬は避ける。</p></Card>
+        <Card><h3 className="text-base font-semibold">Capture / Fusion（概念図）</h3><div className="mt-3"><WaveSVG type="capture_fusion"/></div><p className="mt-2 text-xs text-gray-300">VT中の狭い拍（Capture）/混合形（Fusion）。心室起源支持。</p></Card>
+      </div>
+    );
+
+    const BrugadaFlow = () => (
+      <div className="space-y-4">
+        <Card>
+          <h2 className="text-lg font-bold text-white">Brugada 4段階アルゴリズム（図解）</h2>
+          <Divider />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-2 text-sm text-gray-200">
+              <p>Wide QRS頻拍の鑑別を段階的に：</p>
+              <ol className="list-decimal space-y-1 pl-5">
+                <li>全胸部で <b>RSが無い</b> → VT</li>
+                <li>いずれか胸部で <b>RS間隔 ＞ 100ms</b> → VT</li>
+                <li><b>AV解離</b> あり → VT</li>
+                <li>形態基準（LBBB様/RBBB様）でVTを支持</li>
+              </ol>
+              <p className="text-xs text-gray-400">※ どこかで“はい”ならVT優先。全て“いいえ”ならSVT with 伝導障害を検討。</p>
+            </div>
+            <div>
+              <svg viewBox="0 0 520 360" className="w-full rounded-xl border border-gray-800 bg-gray-900">
+                <defs>
+                  <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#6ee7b7"/>
+                    <stop offset="100%" stopColor="#93c5fd"/>
+                  </linearGradient>
+                </defs>
+                <g fontFamily="system-ui" fontSize="12" fill="#e5e7eb" textAnchor="middle">
+                  <rect x="170" y="10" width="180" height="44" rx="10" stroke="#374151" fill="#111827"/>
+                  <text x="260" y="38">Wide QRS 頻拍</text>
+                  <rect x="20" y="90" width="200" height="54" rx="10" stroke="#374151" fill="#111827"/>
+                  <text x="120" y="122">① RSなし? → VT</text>
+                  <rect x="300" y="90" width="200" height="54" rx="10" stroke="#374151" fill="#111827"/>
+                  <text x="400" y="122">② RS&gt;100ms? → VT</text>
+                  <rect x="20" y="180" width="200" height="54" rx="10" stroke="#374151" fill="#111827"/>
+                  <text x="120" y="212">③ AV解離? → VT</text>
+                  <rect x="300" y="180" width="200" height="54" rx="10" stroke="#374151" fill="#111827"/>
+                  <text x="400" y="212">④ 形態基準</text>
+                  <rect x="20" y="270" width="200" height="54" rx="10" stroke="#10b981" fill="#064e3b"/>
+                  <text x="120" y="302">VTとして対応</text>
+                  <rect x="300" y="270" width="200" height="54" rx="10" stroke="#3b82f6" fill="#0b3b75"/>
+                  <text x="400" y="302">SVT + 変行</text>
+                </g>
+                <g stroke="url(#g1)" strokeWidth="2" fill="none">
+                  <path d="M260 54 V 90"/>
+                  <path d="M120 144 V 180"/>
+                  <path d="M400 144 V 180"/>
+                  <path d="M120 234 V 270"/>
+                  <path d="M400 234 V 270"/>
+                </g>
+              </svg>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+
+    const WPWMap = () => {
+      const headers = [" ", "Anterior", "Antero-septal", "Septal", "Postero-septal", "Lateral"];
+      const rows = [
+        { side: "Left Superior", cells: ["I,aVL,V6デルタ陽性","V1陽性","-","下壁±","側壁強陽性"] },
+        { side: "Left Mid", cells: ["I,aVL,V6陽性","V1陽性","-","下壁±","側壁陽性"] },
+        { side: "Left Inferior", cells: ["I陽性 aVL控えめ","V1陽性","-","下壁陽性","側壁陽性"] },
+        { side: "Right Superior", cells: ["I/aVL陰性化","V1陰性デルタ強","前中隔陰性","下壁±","V6陰性化"] },
+        { side: "Right Inferior", cells: ["I陰性化","V1陰性デルタ","後中隔寄りで下壁陰性","下壁陰性強","V6陰性"] },
+      ];
+      return (
+        <div className="space-y-4">
+          <Card>
+            <h2 className="text-lg font-bold text-white">WPW局在 25分割（暗記用 簡易表）</h2>
+            <p className="mt-1 text-xs text-gray-400">デルタ波の極性（I, aVL, V1, V6, 下壁）から大枠を素早く推定。厳密な全25区画のEPマッピング前の目安。</p>
+            <Divider />
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    {headers.map((h,i)=>(<th key={i} className="border border-gray-800 bg-gray-900/70 px-2 py-2 text-left text-gray-200">{h}</th>))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r,ri)=>(
+                    <tr key={ri}>
+                      <td className="whitespace-nowrap border border-gray-800 bg-gray-900/40 px-2 py-2 text-gray-300">{r.side}</td>
+                      {r.cells.map((c,ci)=>(<td key={ci} className="border border-gray-800 px-2 py-2 text-gray-100">{c}</td>))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+          <Card>
+            <h3 className="text-base font-semibold">覚え方ショートカット</h3>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-200">
+              <li>V1陰性デルタ → 右側</li>
+              <li>下壁陰性 → 後中隔寄り</li>
+              <li>I/aVL/V6強陽性 → 左側側壁</li>
+            </ul>
+          </Card>
+        </div>
+      );
+    };
+
+    const Cases = () => {
+      const CASES_BANK = [
+        { stem:"58歳男性。規則正しいWide QRS、V1陰性（LBBB様）、下方軸、移行V4以降。", ask:"起源と初期対応は？", options:["RVOT・安定なら薬物/評価","LVOT・即CV","AVNRT・アデノシン","心房細動・除細動"], answer:0, explain:"LBBB様＋下方軸は流出路→RVOT典型。安定でもVTとして扱う。" },
+        { stem:"27歳女性。洞調律でPR短縮＋デルタ波。I/aVL/V6陽性、V1陽性。", ask:"副伝導路局在は？", options:["左側側壁","右前中隔","後中隔","右側側壁"], answer:0, explain:"左側側壁の所見。" },
+        { stem:"70歳男性。不規則でWide・高頻拍。", ask:"禁忌薬は？", options:["プロカインアミド","イブチリド","ジギタリス","同期下CV"], answer:2, explain:"pre-excited AF→AVN遮断薬は禁忌。" },
+        { stem:"36歳男性。Wide QRS頻拍でaVR初期R。", ask:"最も妥当な診断は？", options:["SVT with aberrancy","心室頻拍","房室結節リエントリー","心房粗動"], answer:1, explain:"aVR初期RはVT支持。" },
+      ];
+      const [idx,setIdx] = useState(0);
+      const [sel,setSel] = useState(null);
+      const [revealed,setRevealed] = useState(false);
+      const c = CASES_BANK[idx];
+      const next = ()=>{ setSel(null); setRevealed(false); setIdx(i=>(i+1)%CASES_BANK.length); };
+      const prev = ()=>{ setSel(null); setRevealed(false); setIdx(i=>(i-1+CASES_BANK.length)%CASES_BANK.length); };
+      return (
+        <Card>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold">症例ベース模試</h3>
+            <div className="flex gap-2">
+              <button onClick={prev} className="rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">←</button>
+              <button onClick={next} className="rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">→</button>
+            </div>
+          </div>
+          <Divider />
+          <div className="space-y-3 text-sm">
+            <div className="text-gray-300">{c.stem}</div>
+            <div className="text-gray-300">設問：{c.ask}</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {c.options.map((o,i)=>(
+                <button key={i} onClick={()=>!revealed && setSel(i)}
+                  className={"rounded-lg border px-3 py-2 text-left "+(revealed?(i===c.answer?"border-emerald-500 bg-emerald-500/10":"border-rose-500/60 bg-rose-500/10"): (sel===i?"border-blue-500 bg-blue-500/10":"border-gray-800 bg-gray-900/40 hover:bg-gray-800/40"))}
+                >{o}</button>
+              ))}
+            </div>
+            {revealed && <div className="text-xs text-gray-300">解説：{c.explain}</div>}
+            <div className="flex justify-end"><button onClick={()=>setRevealed(true)} className="rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">答えを見る</button></div>
+          </div>
+        </Card>
+      );
+    };
+
+    const Annotate = () => {
+      const [img,setImg] = useState(null);
+      const [marks,setMarks] = useState([]);
+      const [label,setLabel] = useState("P?/Δ?/Capture?/AV解離?");
+      const onFile = (e)=>{ const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=(ev)=>setImg(ev.target.result); r.readAsDataURL(f); };
+      const onClick = (e)=>{ const rect=e.currentTarget.getBoundingClientRect(); const x=e.clientX-rect.left; const y=e.clientY-rect.top; setMarks(m=>[...m,{x,y,label}]); };
+      const clear = ()=>setMarks([]);
+      return (
+        <Card>
+          <h3 className="text-base font-semibold">実波形アップロード＆注釈</h3>
+          <Divider />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input type="file" accept="image/*" onChange={onFile} className="text-sm" />
+            <input value={label} onChange={(e)=>setLabel(e.target.value)} className="rounded-lg border border-gray-700 bg-gray-900/50 px-3 py-1 text-sm" />
+            <button onClick={clear} className="rounded-lg border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800">注釈クリア</button>
+          </div>
+          <div className="mt-4">
+            {!img ? (
+              <div className="rounded-xl border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400">ECG画像（PNG/JPG）を選択し、画像上をクリックするとラベルを置けます。</div>
+            ) : (
+              <div className="relative inline-block">
+                <img src={img} alt="ecg" className="max-h-[420px] rounded-xl border border-gray-800" onClick={onClick} />
+                {marks.map((m,i)=>(
+                  <div key={i} className="absolute -translate-x-1/2 -translate-y-1/2" style={{left:m.x, top:m.y}}>
+                    <div className="rounded-full border border-emerald-400 bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-200 shadow">{m.label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-gray-400">※ ブラウザ内でのみ処理（ローカル）。</p>
+        </Card>
+      );
+    };
+
+    function App(){
+      const [tab,setTab] = useState("alg");
+      const [algoSide,setAlgoSide] = useState("VT");
+      const [wrongIdx,setWrongIdx] = useState([]);
+      useEffect(()=>{ try{ const raw=localStorage.getItem('vtwpw_wrong'); if(raw) setWrongIdx(JSON.parse(raw)); }catch(e){} },[]);
+      const date = new Date();
+      return (
+        <div className="min-h-screen text-gray-100">
+          <main className="mx-auto max-w-6xl px-4 py-8">
+            <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-white">VT & WPW 学習アプリ（PWA）</h1>
+                <p className="text-sm text-gray-400">iPhone ホーム画面に追加対応</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Pill>PWA</Pill>
+                <Pill>{date.toLocaleDateString()}</Pill>
+                {wrongIdx?.length>0 && <Pill>誤答 {wrongIdx.length}</Pill>}
+              </div>
+            </header>
+
+            <div className="mb-6 flex flex-wrap gap-2">
+              <TabButton active={tab==="alg"} onClick={()=>setTab("alg")}>Algorithms</TabButton>
+              <TabButton active={tab==="brugada"} onClick={()=>setTab("brugada")}>Brugada Flow</TabButton>
+              <TabButton active={tab==="loc"} onClick={()=>setTab("loc")}>Localize</TabButton>
+              <TabButton active={tab==="wpw"} onClick={()=>setTab("wpw")}>WPW 25Map</TabButton>
+              <TabButton active={tab==="gallery"} onClick={()=>setTab("gallery")}>Gallery</TabButton>
+              <TabButton active={tab==="cases"} onClick={()=>setTab("cases")}>Cases</TabButton>
+              <TabButton active={tab==="annotate"} onClick={()=>setTab("annotate")}>Annotate</TabButton>
+              <TabButton active={tab==="flash"} onClick={()=>setTab("flash")}>Flashcards</TabButton>
+              <TabButton active={tab==="quiz"} onClick={()=>setTab("quiz")}>Quiz</TabButton>
+              <TabButton active={tab==="review"} onClick={()=>setTab("review")}>Review</TabButton>
+            </div>
+
+            {tab==="alg" && (
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="space-y-4">
+                  <Card>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-bold">アルゴリズム（切替）</h2>
+                      <div className="flex gap-2">
+                        {["VT","WPW"].map(k=> (
+                          <button key={k} onClick={()=>setAlgoSide(k)} className={"rounded-full border px-3 py-1 text-sm transition "+(algoSide===k?"border-white bg-white text-gray-900":"border-gray-700 hover:bg-gray-800")}>{k}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </Card>
+                  {algoSide==="VT" && (<AlgorithmColumn title="Wide QRS頻拍 → VT優先で判断" rules={VT_RULES} mnemonics={VT_MNEMONICS} />)}
+                  {algoSide==="WPW" && (<AlgorithmColumn title="WPW：認識・初期対応・禁忌・根治" rules={WPW_RULES} mnemonics={WPW_MNEMONICS} />)}
+                </div>
+                <div className="space-y-4">
+                  <Card>
+                    <h3 className="text-base font-semibold">スピード暗記モード（片手で流し読み）</h3>
+                    <Divider />
+                    <div className="grid gap-3">
+                      <div>
+                        <div className="text-xs text-gray-400">一文で言うと（VT）</div>
+                        <div className="mt-1 rounded-xl border border-gray-800 bg-gray-900/50 p-3 text-sm">Wide QRS頻拍は危険信号。<b>まずVT</b>として扱い、<b>AV解離／Capture・Fusion</b>、<b>Brugada</b>、<b>aVR</b>で詰める。</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400">一文で言うと（WPW）</div>
+                        <div className="mt-1 rounded-xl border border-gray-800 bg-gray-900/50 p-3 text-sm">不規則でWideは<b>pre-excited AF</b>をまず想起。<b>AVN遮断薬は避ける</b>。狭QRS AVRTは迷走神経刺激→アデノシン。</div>
+                      </div>
+                    </div>
+                  </Card>
+                  <Flashcards />
+                </div>
+              </div>
+            )}
+
+            {tab==="brugada" && <BrugadaFlow />}
+            {tab==="loc" && <Localize />}
+            {tab==="wpw" && <WPWMap />}
+            {tab==="gallery" && <Gallery />}
+            {tab==="cases" && <Cases />}
+            {tab==="annotate" && <Annotate />}
+            {tab==="flash" && (<div className="space-y-4"><MnemonicRow list={VT_MNEMONICS}/><MnemonicRow list={WPW_MNEMONICS}/><Flashcards/></div>)}
+            {tab==="quiz" && <Quiz onWrongChange={(w)=>setWrongIdx(w)} />}
+            {tab==="review" && <Review />}
+
+            <footer className="mt-10 text-center text-xs text-gray-500">* 学習支援用。実臨床では施設プロトコール・最新ガイドライン・専門医の判断を優先してください。</footer>
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
