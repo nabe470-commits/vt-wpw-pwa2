@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>ECG 学習アプリ（VT/WPW/PAC 完全版+++）</title>
+  <title>ECG 学習アプリ（VT/WPW/PAC/PVC 完全版++++）</title>
 
   <!-- Tailwind + React (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -20,7 +20,7 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
-    /* ========== UI ========== */
+    /* ========== 共通UI ========== */
     const TabButton = ({active,onClick,children}) => (
       <button onClick={onClick} className={
         "px-4 py-2 rounded-full text-sm font-medium transition border "+
@@ -41,64 +41,53 @@
       </li>
     );
 
-    /* ========== アルゴリズム：VT / WPW / PAC（出題頻度順に要点を圧縮） ========== */
-    // VT：Brugada・Vereckei(aVR)・安全原則を網羅
+    /* ========== アルゴリズム（VT / WPW / PAC） ========== */
     const VT_RULES = [
       { title:"まずは安全原則", bullets:[
         "不安定（ショック/胸痛/低血圧/意識障害）→ 同期下カルディオバージョン",
         "安定Wide QRS頻拍はまずVTとして扱う"
       ]},
       { title:"VT支持 “赤旗”", bullets:[
-        "AV解離 / Capture / Fusion",
-        "極端な軸（右上/北西軸）",
+        "AV解離 / Capture / Fusion","極端な軸（右上/北西軸）",
         "胸部誘導の陽性/陰性コンコーダンス",
-        "aVRで初期R or 初期40ms上向き or Vi/Vt<1"
+        "aVR: 初期R / 初期40ms上向き / Vi/Vt<1"
       ]},
       { title:"Brugada 4段階（簡略）", bullets:[
-        "① 全胸部でRSなし → VT",
-        "② いずれか胸部でRS間隔>100ms → VT",
-        "③ AV解離あり → VT",
-        "④ 形態基準（LBBB様/RBBB様詳細）でVT支持"
+        "① 全胸部でRSなし → VT","② RS間隔>100ms → VT",
+        "③ AV解離 → VT","④ 形態基準（LBBB様/RBBB様）でVT支持"
       ]},
       { title:"Vereckei（aVR）", bullets:[
-        "aVR初期R / 初期40ms上向き / Vi/Vt<1 → VT支持",
+        "初期R / 初期40ms上向き / Vi/Vt<1 → VT支持",
         "該当なければSVT with aberrancyも検討"
-      ]}
+      ]},
     ];
-    // WPW：禁忌薬とAF対応を明確化
     const WPW_RULES = [
-      { title:"WPWの基本", bullets:[
-        "洞調律：短PR + デルタ波",
-        "AVRTを生じうる副伝導路"
-      ]},
+      { title:"WPWの基本", bullets:["短PR+デルタ波","AVRTの基盤"]},
       { title:"頻拍時初期対応", bullets:[
-        "正行性AVRT（狭QRS）→ 迷走 → アデノシン",
+        "正行性AVRT（狭QRS）→ 迷走→アデノシン",
         "pre-excited AF（不規則Wide）→ AVN遮断薬（ベラパミル/β遮断/ジギ/ジルチ）は避ける",
-        "不安定 → 同期下CV"
+        "不安定→ 同期下CV"
       ]},
-      { title:"薬物（施設プロトコール準拠）", bullets:[
-        "pre-excited AF：プロカインアミド/イブチリドなど",
-        "禁忌：AVN遮断単独（Ca拮抗薬/β遮断/ジギタリス）"
-      ]}
+      { title:"薬物（例）", bullets:[
+        "pre-excited AF：プロカインアミド/イブチリド（施設プロトコール準拠）"
+      ]},
     ];
-    // PAC：非伝導・変行伝導(Ashman)・局在の見方
     const PAC_RULES = [
       { title:"PACの見抜き方", bullets:[
         "洞より早いP′（形が洞Pと異なる）",
-        "P′後QRSあり→伝導PAC／なし→非伝導PAC",
-        "PAC後RRは非代償性（洞リセット）が多い"
+        "P′後QRSあり→伝導／なし→非伝導PAC",
+        "PAC後RRは非代償性が多い（洞リセット）"
       ]},
       { title:"PAC + 変行伝導（Ashman）", bullets:[
-        "Long–Short直後にRBBB様で広いQRS",
-        "起源は上室のまま → VTと混同しない"
+        "Long–Short直後にRBBB様WideQRS","起源は上室→VTと混同しない"
       ]},
       { title:"落とし穴", bullets:[
-        "非伝導PACは房室ブロックと誤診されやすい → Tの肩のP′を拡大で探す",
+        "非伝導PACは房室ブロックと誤診されやすい→Tの肩に隠れたP′を拡大で探す",
         "PAC vs PVCはP′位置と先行RRが鍵"
-      ]}
+      ]},
     ];
 
-    /* ========== 局在：VT / WPW / PAC / 先天性ECG表 ========== */
+    /* ========== 局在（VT / WPW / PAC / PVC / 先天性ECG） ========== */
     const VT_LOCALIZATION = [
       {title:"LBBB様 vs RBBB様", bullets:["V1陰性(LBBB様)→右室起源","V1陽性(RBBB様)→左室起源"]},
       {title:"軸と移行帯", bullets:["下方軸→流出路","上方軸→流入路/心尖/後壁","移行V2以前→左室寄り / V4以降→右室寄り"]},
@@ -113,7 +102,8 @@
       {title:"P′軸", bullets:["下方軸（II/III/aVF陽性）→上位右房/洞近傍","上方軸（II/III/aVF陰性）→下位右房/左房/CS入口部"]},
       {title:"V1のP′", bullets:["陽性→右房自由壁/前方","陰性→左房後方/肺静脈","二相性(+/−)→右房中隔/CS入口部寄り","二相性(−/+)→左房中隔寄り"]}
     ];
-    // WPW起源マップ（表）
+
+    /* ★ WPW起源マップ（表） */
     const WPW_MAP = [
       { site:"左側側壁（LL）",   v1:"+", inf:"+",     iavl:"+",  v6:"+",       hint:"I/aVL/V6強陽性 + V1陽性" },
       { site:"左前側壁（LAL）",  v1:"+", inf:"+/±",   iavl:"+",  v6:"+",       hint:"前方寄り。側壁誘導が総じて陽性" },
@@ -124,28 +114,32 @@
       { site:"右後中隔（RPS）",  v1:"−/二相", inf:"−", iavl:"−/±", v6:"−/±",  hint:"**下壁陰性 + 右側要素**" },
       { site:"中隔中央（MS）",   v1:"二相(+/− or −/+)", inf:"±", iavl:"±", v6:"±", hint:"等電位気味／決め手弱い" }
     ];
-    // PAC起源マップ（表）
-    const PAC_MAP = [
-      { site:"高位右房/クリスタ〜RAA", inf:"+", iavl:"+", v1:"陽性",         hint:"鋭いP′/頻回PACで多い" },
-      { site:"右房中隔（上）",          inf:"+", iavl:"±", v1:"二相性(+/−)", hint:"CSより前方" },
-      { site:"CS入口部（下位RA）",       inf:"−", iavl:"±", v1:"二相性(+/−)", hint:"Long–Short後に出やすい" },
-      { site:"右房自由壁（下）",         inf:"−", iavl:"+", v1:"陽性/平坦",   hint:"I陽性=右側寄り" },
-      { site:"左房後方/肺静脈",          inf:"−", iavl:"−", v1:"陰性",       hint:"P′幅やや広い" },
-      { site:"左房中隔/LAA",            inf:"−", iavl:"−", v1:"二相性(−/+)", hint:"aVL陰性が鍵" }
+
+    /* ★ PVC起源マップ（表・簡易） */
+    const PVC_MAP = [
+      { site:"RVOT（右室流出路）",     v1:"LBBB様（陰性）", axis:"下方軸", trans:"遅い（V4以降）", aux:"aVR低R / V6高R", hint:"最多。LBBB様+下方軸+遅い移行→RVOT" },
+      { site:"LVOT（左室流出路/左冠尖）", v1:"LBBB様（陰性）", axis:"下方軸", trans:"早い（V2以前/〜V3）", aux:"aVL深S・aVR高R", hint:"V2 TR>0.6ならLVOTを強く示唆" },
+      { site:"RCC/周辺（大動脈右冠尖）", v1:"LBBB様", axis:"下方軸", trans:"やや早い", aux:"I小R,aVL陰性", hint:"左よりも右寄りのLVOT" },
+      { site:"RV inflow/後壁",        v1:"LBBB様", axis:"上方軸", trans:"遅い", aux:"下壁陰性", hint:"LBBB様+上方軸→流入路/後壁" },
+      { site:"左後枝（Fascicular）",  v1:"RBBB様（陽性）", axis:"上方軸", trans:"可変", aux:"V5-6でS深", hint:"Verapamil感受性。短結合〜運動誘発少" },
+      { site:"左前枝（Fascicular）",  v1:"RBBB様（陽性）", axis:"下方軸", trans:"可変", aux:"V5-6でS深", hint:"RBBB様+下方軸→左前枝" },
+      { site:"Papillary muscle（LV）」", v1:"RBBB様", axis:"可変", trans:"可変", aux:"V1広いR, V6深S", hint:"乳頭筋PVC。RBBB様+側壁深Sが目安" },
+      { site:"LV summit/側壁高位",     v1:"RBBB様", axis:"下方軸", trans:"早い", aux:"I/aVL高R", hint:"カテ到達困難域のことあり" },
     ];
-    // 先天性心疾患 ECG 早見表
+
+    /* ★ 先天性心疾患 ECG 早見表（強化） */
     const CHD_MAP = [
-      { dz:"ASD（二次孔）", axis:"右軸偏位", qrs:"rSr′(V1)/不完全RBBB", p:"右房負荷(P高)", note:"右室容量負荷パターン" },
+      { dz:"ASD（二次孔）", axis:"右軸偏位", qrs:"rSr′(V1)/不完全RBBB", p:"右房負荷(P高)", note:"右室容量負荷。固定性分裂が臨床所見" },
       { dz:"AVSD（ECD）", axis:"左軸偏位", qrs:"右脚ブロック", p:"両房拡大", note:"左軸+RBBBが典型" },
-      { dz:"TOF", axis:"右軸〜右上軸", qrs:"右室肥大型", p:"±右房負荷", note:"RV圧負荷" },
+      { dz:"TOF", axis:"右軸〜右上軸", qrs:"右室肥大型", p:"±右房負荷", note:"RV圧負荷。" },
       { dz:"TGA", axis:"右軸 or 正軸", qrs:"右室肥大型", p:"正常", note:"新生児〜RV優位" },
       { dz:"三尖弁閉鎖", axis:"左軸偏位", qrs:"左室肥大", p:"右房負荷", note:"ASD合併で房負荷所見" },
       { dz:"肺動脈閉鎖", axis:"右軸偏位", qrs:"右室肥大", p:"右房負荷", note:"重症で低電位化も" },
       { dz:"Ebstein奇形", axis:"右軸偏位", qrs:"RBBB様", p:"巨大P(右房)", note:"WPW合併多い/PR延長" },
-      { dz:"WPW合併先天疾患", axis:"右軸+Δ波", qrs:"短PR+デルタ波", p:"高P波", note:"RPS経路が最多" }
+      { dz:"WPW合併先天疾患", axis:"右軸+Δ波", qrs:"短PR+デルタ波", p:"高P波", note:"RPS経路が最多" },
     ];
 
-    /* ========== ギャラリー（概念図） ========== */
+    /* ========== 概念図（SVG） ========== */
     const WaveSVG = ({type}) => {
       const grid = () => (<pattern id="g" width="20" height="20" patternUnits="userSpaceOnUse"><path d={`M20 0H0 M0 20V0`} stroke="#1f2937" strokeWidth="1" /></pattern>);
       const path = {
@@ -166,49 +160,36 @@
       );
     };
 
-    /* ========== 暗記用フラッシュカード ========== */
+    /* ========== 暗記カード ========== */
     const FLASHCARDS = [
-      { q:"Brugadaの最初のステップは？", a:"全胸部でRSがないか確認（あればVT）" },
-      { q:"aVRでVTを強く支持する一言は？", a:"初期R/初期40ms上向き/Vi/Vt<1" },
-      { q:"pre-excited AFで禁忌の薬群は？", a:"AVN遮断（ベラパミル/β遮断/ジギタリス/ジルチ）" },
-      { q:"PACの非代償性とは？", a:"PACで洞リセット→RRが2×基礎RRより短い" },
-      { q:"V1陰性はどちら起源？", a:"右室起源（LBBB様）" },
-      { q:"Capture/Fusionは何を示唆？", a:"心室起源（VT）確定的" },
-      { q:"下壁陰性は何を示唆？", a:"後中隔（PS）寄りを疑う" },
+      { q:"Wide QRS頻拍の安全原則は？", a:"まずVTとして扱う" },
+      { q:"Brugada第1段階は？", a:"全胸部でRSが無いか確認（あればVT）" },
+      { q:"aVRでVT支持の一文は？", a:"初期R/初期40ms上向き/Vi/Vt<1" },
+      { q:"pre-excited AFで禁忌は？", a:"AVN遮断（ベラパミル/β遮断/ジギ/ジルチ）" },
+      { q:"V1陰性＝？", a:"右室起源（LBBB様）" },
+      { q:"V2 transition ratio>0.6＝？", a:"LVOT示唆" },
+      { q:"PACの非代償性とは？", a:"洞リセット→RRが2×基礎RRより短い" },
+      { q:"PVC：LBBB様＋下方軸＋遅い移行＝？", a:"RVOT" },
     ];
 
-    /* ========== Quiz（暗記＆応用） ========== */
+    /* ========== Quiz（PVC追加問題あり） ========== */
     const QUIZ = [
-      // VTアルゴリズム
+      { stem:"aVRで初期R。まず疑う？", options:["SVT","VT","AVNRT","洞頻拍"], answer:1, explain:"aVR初期R/初期40ms上向き/Vi/Vt<1はVT支持。" },
       { stem:"Brugada第1段階：全胸部でRSなし。結論は？", options:["SVT支持","VT支持","所見なし","洞徐脈"], answer:1, explain:"R単相/QSのみはVT支持。" },
-      { stem:"Brugada第2段階：RS間隔>100ms。結論は？", options:["VT支持","SVT支持","判定不能","房室ブロック"], answer:0, explain:"RS>100msはVT支持。" },
-      { stem:"aVRで初期Rあり。示唆？", options:["SVT","VT","AVNRT","洞頻拍"], answer:1, explain:"aVR初期R/初期40ms上向き/Vi/Vt<1はVT支持。" },
-      { stem:"Wide QRS頻拍の安全原則は？", options:["SVTとして扱う","VTとして扱う","ベラパミル投与","経口β遮断"], answer:1, explain:"まずVTとして扱う。"},
-      { stem:"Capture/Fusionを認める。示唆？", options:["SVT","心室起源","房室結節リエントリー","洞頻拍"], answer:1, explain:"心室起源（VT）を強く示唆。" },
-
-      // VT局在
-      { stem:"LBBB様（V1陰性）＋下方軸。最も示唆？", options:["RVOT","LVOT","左後枝VT","心房起源"], answer:0, explain:"流出路→RVOT典型。" },
-      { stem:"RBBB様（V1陽性）＋上方軸。示唆？", options:["左前枝VT","左後枝VT","RVOT","AVNRT"], answer:1, explain:"左後枝（Verapamil感受性）VT。" },
       { stem:"V2 transition ratio>0.6。示唆？", options:["RVOT","LVOT","AVNRT","洞不全"], answer:1, explain:"LVOT示唆。" },
-
-      // WPW基本
       { stem:"pre-excited AFで避けるべき？", options:["プロカインアミド","イブチリド","ベラパミル","同期下CV"], answer:2, explain:"AVN遮断は禁忌。" },
-      { stem:"安定正行性AVRTの初手は？", options:["同期下CV","迷走神経刺激","ベラパミル静注","アミオダロン"], answer:1, explain:"迷走→アデノシン。" },
-
-      // WPW起源（表対応）
+      { stem:"PAC：Long–Short後にRBBB様Wide。示唆？", options:["VT","PAC with aberrancy(Ashman)","PVC","WPW"], answer:1, explain:"上室起源のまま。" },
+      /* WPW起源 */
       { stem:"V1陽性 + I/aVL陽性 + V6高R。最も示唆？", options:["右側側壁","左側側壁","右前中隔","後中隔"], answer:1, explain:"左側側壁典型。" },
-      { stem:"V1陰性 + 下壁陰性。まず疑う？", options:["左前側壁","中隔中央","右/左後中隔","高位右房"], answer:2, explain:"後中隔寄り（PS）。" },
-      { stem:"V1深い陰性 + I/aVL陰性 + V6低R。示唆？", options:["右側側壁","左後側壁","左側側壁","中隔中央"], answer:0, explain:"右側側壁の所見。" },
-
-      // PAC基本・局在
-      { stem:"非伝導PACの特徴は？", options:["P′後にQRSが出る","RRは常に2×基礎RR","P′後QRSなし","常に代償性"], answer:2, explain:"QRSが出ない。RRは非代償性が多い。" },
-      { stem:"Long–Short後にRBBB様Wide。示唆？", options:["VT","PAC with aberrancy(Ashman)","PVC","WPW"], answer:1, explain:"上室起源のまま。" },
-      { stem:"P′がV1陰性・II/III/aVF陰性・I/aVL陰性。示唆？", options:["高位右房/RAA","右房中隔（上）","CS入口部/下位RA","左房後方/肺静脈"], answer:3, explain:"左房後方/肺静脈寄り。" },
-
-      // 先天性ECG
+      { stem:"V1陰性 + 下壁陰性。まず疑う？", options:["左前側壁","中隔中央","後中隔","高位右房"], answer:2, explain:"後中隔寄り（PS）。" },
+      /* PVC起源 */
+      { stem:"PVC：LBBB様（V1陰性）＋ 下方軸 ＋ 移行帯が遅い（V4以降）。最も示唆？", options:["LVOT","RVOT","左後枝","乳頭筋"], answer:1, explain:"RVOTの典型。" },
+      { stem:"PVC：LBBB様＋下方軸＋移行帯が早い（V2〜V3）。補助所見aVL深S/aVR高R。示唆？", options:["LVOT（左冠尖）","RV inflow","左前枝","乳頭筋"], answer:0, explain:"LVOT/左冠尖。" },
+      { stem:"PVC：RBBB様＋上方軸。示唆？", options:["左後枝（Fascicular）","右室流入路","RVOT","LV summit"], answer:0, explain:"左後枝PVC。" },
+      /* 先天性ECG */
       { stem:"ASD（二次孔）で頻出の軸/波形は？", options:["左軸+RBBB","右軸+rSr′(V1)","正軸+LBBB","左軸+LBBB"], answer:1, explain:"右室容量負荷→右軸+rSr′。" },
-      { stem:"AVSD（ECD）の典型は？", options:["右軸+rSr′","左軸+RBBB","右軸+LBBB","左軸+LBBB"], answer:1, explain:"左軸+右脚ブロック。" },
-      { stem:"Ebstein奇形で多い合併は？", options:["WPW（右後中隔経路）","QT短縮症候群","Situs inversus","WPW（左側側壁）"], answer:0, explain:"RPS経路のWPWが最多。"}
+      { stem:"AVSD（ECD）の典型は？", options:["右軸+rSr′","左軸+RBBB","右軸+LBBB","左軸+LBBB"], answer:1, explain:"左軸+RBBB。" },
+      { stem:"Ebstein奇形で多い合併は？", options:["WPW（右後中隔経路）","QT短縮症候群","Situs inversus","WPW（左側側壁）"], answer:0, explain:"RPS経路WPWが最多。" },
     ];
 
     /* ========== Components ========== */
@@ -232,7 +213,6 @@
         ))}
       </div>
     );
-
     const Flashcards = () => {
       const [idx,setIdx]=useState(0); const [show,setShow]=useState(false);
       const next=()=>{setShow(false);setIdx(i=>(i+1)%FLASHCARDS.length)}; const prev=()=>{setShow(false);setIdx(i=>(i-1+FLASHCARDS.length)%FLASHCARDS.length)};
@@ -253,7 +233,6 @@
         </Card>
       );
     };
-
     const Quiz = ({onWrongChange}) => {
       const [answers,setAnswers]=useState(Array(QUIZ.length).fill(null));
       const [revealed,setRevealed]=useState(false);
@@ -302,6 +281,7 @@
         <div className="space-y-4"><AlgorithmColumn title="WPW局在：デルタ波極性" rules={WPW_LOCALIZATION}/></div>
         <div className="space-y-4"><AlgorithmColumn title="PAC局在：P′軸とV1" rules={PAC_LOCALIZATION}/></div>
 
+        <!-- WPW起源マップ -->
         <Card>
           <h3 className="text-base font-semibold">WPW起源マップ（暗記用 早見表）</h3>
           <div className="mt-2 text-xs text-gray-400">V1（左右）→ 下壁（後中隔）→ I/aVL（左右補強）の3手で当てる</div>
@@ -316,49 +296,49 @@
                 <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">V6</th>
                 <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">ヒント</th>
               </tr></thead>
-              <tbody>
-                {WPW_MAP.map((r,i)=>(
-                  <tr key={i}>
-                    <td className="border border-gray-800 px-2 py-1">{r.site}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.v1}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.inf}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.iavl}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.v6}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.hint}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <tbody>{WPW_MAP.map((r,i)=>(
+                <tr key={i}>
+                  <td className="border border-gray-800 px-2 py-1">{r.site}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.v1}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.inf}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.iavl}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.v6}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.hint}</td>
+                </tr>
+              ))}</tbody>
             </table>
           </div>
         </Card>
 
+        <!-- PVC起源マップ -->
         <Card>
-          <h3 className="text-base font-semibold">PAC起源マップ（暗記用 早見表）</h3>
+          <h3 className="text-base font-semibold">PVC起源マップ（暗記用 早見表）</h3>
           <Divider/>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr>
                 <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">起源候補</th>
-                <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">II/III/aVF</th>
-                <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">I/aVL</th>
-                <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">V1 P′</th>
-                <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">ヒント</th>
+                <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">V1形（LBBB/RBBB）</th>
+                <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">電気軸</th>
+                <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">移行帯</th>
+                <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">補助所見</th>
+                <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">覚え方</th>
               </tr></thead>
-              <tbody>
-                {PAC_MAP.map((r,i)=>(
-                  <tr key={i}>
-                    <td className="border border-gray-800 px-2 py-1">{r.site}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.inf}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.iavl}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.v1}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.hint}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <tbody>{PVC_MAP.map((r,i)=>(
+                <tr key={i}>
+                  <td className="border border-gray-800 px-2 py-1">{r.site}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.v1}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.axis}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.trans}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.aux}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.hint}</td>
+                </tr>
+              ))}</tbody>
             </table>
           </div>
         </Card>
 
+        <!-- 先天性心疾患 ECG -->
         <Card>
           <h3 className="text-base font-semibold">先天性心疾患に特徴的な心電図（出題頻度高）</h3>
           <Divider/>
@@ -371,17 +351,15 @@
                 <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">P波</th>
                 <th className="border border-gray-800 bg-gray-900/70 px-2 py-1 text-left">要点</th>
               </tr></thead>
-              <tbody>
-                {CHD_MAP.map((r,i)=>(
-                  <tr key={i}>
-                    <td className="border border-gray-800 px-2 py-1">{r.dz}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.axis}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.qrs}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.p}</td>
-                    <td className="border border-gray-800 px-2 py-1">{r.note}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <tbody>{CHD_MAP.map((r,i)=>(
+                <tr key={i}>
+                  <td className="border border-gray-800 px-2 py-1">{r.dz}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.axis}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.qrs}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.p}</td>
+                  <td className="border border-gray-800 px-2 py-1">{r.note}</td>
+                </tr>
+              ))}</tbody>
             </table>
           </div>
         </Card>
@@ -461,11 +439,11 @@
           <main className="mx-auto max-w-6xl px-4 py-8">
             <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-white">ECG 学習アプリ（VT/WPW/PAC 完全版+++）</h1>
-                <p className="text-sm text-gray-400">アルゴリズム総まとめ／WPW起源・PAC起源／先天性ECG表／暗記カード＆大量クイズ</p>
+                <h1 className="text-2xl font-bold tracking-tight text-white">ECG 学習アプリ（VT/WPW/PAC/PVC 完全版++++）</h1>
+                <p className="text-sm text-gray-400">アルゴリズム総まとめ／WPW・PAC・PVC起源マップ／先天性ECG表／暗記カード＆大量クイズ</p>
               </div>
               <div className="flex items-center gap-2">
-                <Pill>v2.5</Pill><Pill>{date.toLocaleDateString()}</Pill>
+                <Pill>v2.6</Pill><Pill>{date.toLocaleDateString()}</Pill>
                 {wrongIdx?.length>0 && <Pill>誤答 {wrongIdx.length}</Pill>}
               </div>
             </header>
@@ -527,7 +505,8 @@
               <MnemonicRow list={[
                 {tag:"VT",text:"RSなし→RS>100→AV解離→形態"},
                 {tag:"WPW",text:"pre-excited AFにAVN遮断薬は禁忌"},
-                {tag:"PAC",text:"P′の形・位置とRRで見る"}
+                {tag:"PAC",text:"P′の形・位置とRRで判断"},
+                {tag:"PVC",text:"LBBB/ RBBB + 軸 + 移行で起源推定"}
               ]}/>
               <Flashcards/>
             </div>)}
